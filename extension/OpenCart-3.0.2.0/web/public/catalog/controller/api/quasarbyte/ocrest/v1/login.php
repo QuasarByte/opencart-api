@@ -1,0 +1,77 @@
+<?php
+
+require_once("qbocrest_base_controller.php");
+require_once(DIR_APPLICATION . "controller/api/quasarbyte/ocrest/v1/version_info_service.php");
+
+class ControllerAPIQuasarByteOCRestV1Login extends QuasarByteOCRestBaseController {
+
+    private $versionInfoService;
+
+    function __construct($registry)
+    {
+        parent::__construct($registry);
+        $this->versionInfoService = new VersionInfoService();
+    }
+
+        public function index() {
+
+        $this->changeErrorHandler();
+
+		$this->load->language('api/login');
+
+		$json = array();
+
+		$this->load->model('account/api');
+
+		// Login with API Key
+		$api_info = $this->model_account_api->login($this->request->post['username'], $this->request->post['key']);
+
+		if ($api_info) {
+			// Check if IP is allowed
+			$ip_data = array();
+	
+			$results = $this->model_account_api->getApiIps($api_info['api_id']);
+	
+			foreach ($results as $result) {
+				$ip_data[] = trim($result['ip']);
+			}
+	
+			if (!in_array($this->request->server['REMOTE_ADDR'], $ip_data)) {
+				$json['error']['ip'] = sprintf($this->language->get('error_ip'), $this->request->server['REMOTE_ADDR']);
+			}				
+				
+			if (!$json) {
+				$json['success'] = $this->language->get('text_success');
+				
+               $session = new Session($this->config->get('session_engine'), $this->registry);
+				$session->start();
+				
+				$this->model_account_api->addApiSession($api_info['api_id'], $session->getId(), $this->request->server['REMOTE_ADDR']);
+				
+				$session->data['api_id'] = $api_info['api_id'];
+
+                //Save API iD Into session storage
+                $this->closeSession($session);
+
+				// Create Token
+				$json['api_token'] = $session->getId();
+			} else {
+				$json['error']['key'] = $this->language->get('error_key');
+			}
+		} else {
+            $json['error']['key'] = $this->language->get('error_key');
+        }
+		
+		$this->response->addHeader('Content-Type: application/json');
+		$this->response->setOutput(json_encode($json));
+	}
+
+	private function closeSession($session) {
+//	    //Dynamic method call
+//        if ($this->versionInfoService->getVersionInfo()->getMajor() >= 3) {
+//            $closeMethodName = 'close';
+//            $session->$closeMethodName();
+//        }
+    }
+
+}
